@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Op-Amp Threshold Detection — Interactive Simulation</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #090c10;
+    --bg1:      #0d1117;
+    --bg2:      #131920;
+    --bg3:      #1a2232;
+    --border:   #1e2d40;
+    --border2:  #253448;
+    --teal:     #00d4aa;
+    --teal-dk:  #009977;
+    --amber:    #f5a623;
+    --coral:    #f0455a;
+    --blue:     #3b9af8;
+    --green:    #34d399;
+    --muted:    #4a6080;
+    --text:     #c8d8e8;
+    --text2:    #7a92a8;
+    --scope-bg: #070b0f;
+    --scope-grid: #0f1c2a;
+    --glow-teal: 0 0 12px rgba(0,212,170,.35);
+    --glow-amber: 0 0 12px rgba(245,166,35,.35);
+    --glow-coral: 0 0 12px rgba(240,69,90,.35);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.06) 2px, rgba(0,0,0,.06) 4px);
+    pointer-events: none; z-index: 1000;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    background: var(--bg1);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: var(--teal);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 18px; height: 18px; }
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 700;
+    letter-spacing: .08em; color: var(--text);
+  }
+  .logo-sub { font-size: 10px; color: var(--muted); font-weight: 300; margin-top: 1px; }
+  .header-badges { display: flex; gap: 8px; }
+  .badge {
+    padding: 4px 10px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    font-size: 10px; font-weight: 500;
+    letter-spacing: .06em;
+  }
+  .badge-teal { color: var(--teal); border-color: rgba(0,212,170,.3); background: rgba(0,212,170,.07); }
+  .badge-amber { color: var(--amber); border-color: rgba(245,166,35,.3); background: rgba(245,166,35,.07); }
+  .out-badge {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    transition: all .12s;
+  }
+  .out-badge.high { background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.4); color: var(--green); box-shadow: var(--glow-teal); }
+  .out-badge.low  { background: rgba(240,69,90,.12);  border: 1px solid rgba(240,69,90,.4);  color: var(--coral); box-shadow: var(--glow-coral); }
+  .out-dot { width: 7px; height: 7px; border-radius: 50%; animation: pulse 1s infinite; }
+  .out-badge.high .out-dot { background: var(--green); }
+  .out-badge.low  .out-dot { background: var(--coral); animation-duration: .5s; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    padding: 20px 24px;
+    max-width: 1400px; margin: 0 auto;
+  }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-size: 10px; font-weight: 500;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .panel-body { padding: 16px; }
+
+  /* ── OSCILLOSCOPE ── */
+  .scope-wrap {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .scope-canvas-wrap {
+    position: relative;
+    background: var(--scope-bg);
+    margin: 0; padding: 0;
+  }
+  #scope {
+    display: block;
+    width: 100%; height: 280px;
+  }
+  .scope-legend {
+    display: flex; gap: 18px; padding: 10px 16px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); }
+  .leg-line { width: 20px; height: 2px; border-radius: 1px; }
+  .leg-dash { width: 20px; height: 0; border-top: 2px dashed; }
+
+  /* ── CIRCUIT DIAGRAM ── */
+  .circuit-wrap {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  #circuit { display: block; width: 100%; height: 200px; }
+
+  /* ── CONTROLS PANEL ── */
+  .controls-wrap {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  /* ── SLIDERS ── */
+  .ctrl-section { margin-bottom: 20px; }
+  .ctrl-section-title {
+    font-size: 9px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ctrl-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .ctrl-label { font-size: 10px; color: var(--text2); min-width: 76px; line-height: 1.3; }
+  .ctrl-label span { display: block; font-size: 9px; color: var(--muted); margin-top: 1px; }
+  .ctrl-val {
+    font-size: 11px; font-weight: 700; min-width: 48px; text-align: right;
+    color: var(--text);
+  }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 4px;
+    background: var(--bg3);
+    border-radius: 2px; outline: none; cursor: pointer;
+    border: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--teal);
+    border: 2px solid var(--bg1);
+    box-shadow: 0 0 6px rgba(0,212,170,.5);
+    cursor: pointer; transition: transform .1s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  input[type=range].amber::-webkit-slider-thumb  { background: var(--amber); box-shadow: 0 0 6px rgba(245,166,35,.5); }
+  input[type=range].coral::-webkit-slider-thumb  { background: var(--coral); box-shadow: 0 0 6px rgba(240,69,90,.5); }
+  input[type=range].blue::-webkit-slider-thumb   { background: var(--blue);  box-shadow: 0 0 6px rgba(59,154,248,.5); }
+
+  /* ── STAT CARDS ── */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .stat {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-val { font-size: 18px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1.1; }
+  .stat-label { font-size: 9px; color: var(--muted); margin-top: 4px; letter-spacing: .06em; }
+
+  /* ── TOGGLE BUTTON ── */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    cursor: pointer; user-select: none;
+    transition: border-color .15s;
+  }
+  .toggle-row:hover { border-color: var(--border2); }
+  .toggle-row .label { font-size: 10px; color: var(--text2); }
+  .toggle-pill {
+    width: 36px; height: 18px;
+    background: var(--border);
+    border-radius: 9px; position: relative;
+    transition: background .2s;
+  }
+  .toggle-pill.on { background: var(--teal); }
+  .toggle-pill::after {
+    content: '';
+    position: absolute; left: 2px; top: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%; background: #fff;
+    transition: transform .2s;
+  }
+  .toggle-pill.on::after { transform: translateX(18px); }
+
+  /* ── HYSTERESIS BAND VIZ ── */
+  .hyst-viz {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+  }
+  .hyst-title { font-size: 9px; color: var(--muted); margin-bottom: 8px; letter-spacing: .1em; }
+  .hyst-bar-wrap { position: relative; height: 28px; }
+  .hyst-bar { position: absolute; top: 0; height: 100%; background: rgba(245,166,35,.15); border-radius: 3px; transition: all .2s; }
+  .hyst-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--amber); border-radius: 1px; }
+  .hyst-labels {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: var(--amber); margin-top: 4px;
+  }
+
+  /* ── FORMULA BOX ── */
+  .formula-box {
+    background: rgba(0,212,170,.06);
+    border: 1px solid rgba(0,212,170,.2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 10px; color: var(--teal); line-height: 1.8;
+    margin-bottom: 12px;
+  }
+  .formula-box strong { color: var(--text); }
+
+  /* ── ABOUT SECTION ── */
+  .about {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px;
+    margin-top: 16px;
+  }
+  .about h3 { font-family: 'Syne', sans-serif; font-size: 12px; color: var(--teal); margin-bottom: 8px; font-weight: 700; }
+  .about p { font-size: 10px; color: var(--text2); line-height: 1.8; margin-bottom: 6px; }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 10px; color: var(--muted);
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto;
+      padding: 12px;
+    }
+    .scope-wrap  { grid-column: 1; grid-row: 1; }
+    .circuit-wrap { grid-column: 1; grid-row: 2; }
+    .controls-wrap { grid-column: 1; grid-row: 3; }
+    #scope { height: 220px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#090c10" stroke-width="2.5" stroke-linecap="round">
+        <polyline points="2 12 6 4 10 20 14 8 18 16 22 12"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">OP-AMP COMPARATOR</div>
+      <div class="logo-sub">Interactive Threshold Detection Simulation</div>
+    </div>
+  </div>
+  <div class="header-badges">
+    <span class="badge badge-teal">LM741 / LM339</span>
+    <span class="badge badge-amber">OPEN-LOOP MODE</span>
+  </div>
+  <div id="out-badge" class="out-badge high">
+    <div class="out-dot"></div>
+    <span id="out-text">HIGH</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── OSCILLOSCOPE ── -->
+  <div class="panel scope-wrap">
+    <div class="panel-header">
+      <span class="panel-title">Oscilloscope — Real-time Waveform</span>
+      <div style="display:flex;gap:8px">
+        <span id="freq-label" style="font-size:10px;color:var(--muted)">1.0 Hz</span>
+        <span style="font-size:10px;color:var(--muted)">|</span>
+        <span id="timebase-label" style="font-size:10px;color:var(--muted)">3.0 s/div</span>
+      </div>
+    </div>
+    <div class="scope-canvas-wrap">
+      <canvas id="scope"></canvas>
+    </div>
+    <div class="scope-legend">
+      <div class="leg"><div class="leg-line" style="background:#00d4aa"></div>V<sub style="font-size:8px">in</sub> input</div>
+      <div class="leg"><div class="leg-dash" style="border-color:#f5a623"></div>V<sub style="font-size:8px">ref</sub> threshold</div>
+      <div class="leg"><div class="leg-line" style="background:#f0455a"></div>V<sub style="font-size:8px">out</sub> output</div>
+      <div class="leg" id="hyst-legend" style="display:none"><div class="leg-dash" style="border-color:#f5a623;opacity:.4"></div>Hysteresis band</div>
+    </div>
+  </div>
+
+  <!-- ── CONTROLS ── -->
+  <div class="panel controls-wrap">
+    <div class="panel-header">
+      <span class="panel-title">Control Panel</span>
+      <span style="font-size:9px;color:var(--muted)">LIVE</span>
+    </div>
+    <div class="panel-body">
+
+      <!-- Stats -->
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-val" id="vin-stat" style="color:#00d4aa">0.00</div>
+          <div class="stat-label">V<sub>in</sub> (V)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="vref-stat" style="color:#f5a623">0.00</div>
+          <div class="stat-label">V<sub>ref</sub> (V)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="vout-stat" style="color:#f0455a">+12</div>
+          <div class="stat-label">V<sub>out</sub> (V)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="margin-stat" style="color:#a78bfa">+0.00</div>
+          <div class="stat-label">Margin (V)</div>
+        </div>
+      </div>
+
+      <!-- Signal Controls -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Signal Parameters</div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Amplitude<span>V<sub>in</sub> peak</span></div>
+          <input type="range" id="amp" min="0.5" max="12" step="0.5" value="8">
+          <span class="ctrl-val" id="amp-val">8.0V</span>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-label">Threshold<span>V<sub>ref</sub></span></div>
+          <input type="range" id="vref" class="amber" min="-11" max="11" step="0.5" value="2">
+          <span class="ctrl-val" id="vref-val" style="color:var(--amber)">2.0V</span>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-label">Frequency<span>input signal</span></div>
+          <input type="range" id="freq" min="0.2" max="5" step="0.2" value="1">
+          <span class="ctrl-val" id="freq-val">1.0Hz</span>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-label">Supply ±V<sub>cc</sub><span>rail voltage</span></div>
+          <input type="range" id="vcc" class="coral" min="5" max="15" step="1" value="12">
+          <span class="ctrl-val" id="vcc-val" style="color:var(--coral)">±12V</span>
+        </div>
+      </div>
+
+      <!-- Schmitt Trigger -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Schmitt Trigger (Hysteresis)</div>
+
+        <div class="toggle-row" id="hyst-toggle" onclick="toggleHysteresis()">
+          <span class="label">Enable Hysteresis</span>
+          <div class="toggle-pill" id="hyst-pill"></div>
+        </div>
+
+        <div id="hyst-controls" style="display:none">
+          <div class="ctrl-row">
+            <div class="ctrl-label">Band Width<span>V<sub>UTP</sub>−V<sub>LTP</sub></span></div>
+            <input type="range" id="hyst" class="amber" min="0.25" max="4" step="0.25" value="1">
+            <span class="ctrl-val" id="hyst-val" style="color:var(--amber)">1.0V</span>
+          </div>
+          <div class="hyst-viz">
+            <div class="hyst-title">THRESHOLD BAND VISUALISATION</div>
+            <div class="hyst-bar-wrap">
+              <div class="hyst-bar" id="hyst-bar"></div>
+              <div class="hyst-line" id="hyst-center"></div>
+            </div>
+            <div class="hyst-labels">
+              <span id="ltp-label">V_LTP: 1.5V</span>
+              <span id="utp-label">V_UTP: 2.5V</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="formula-box" id="formula-box">
+          <strong>V<sub>out</sub></strong> = +V<sub>cc</sub> if V<sub>in</sub> &gt; V<sub>ref</sub><br>
+          <strong>V<sub>out</sub></strong> = −V<sub>cc</sub> if V<sub>in</sub> &lt; V<sub>ref</sub>
+        </div>
+      </div>
+
+      <!-- About -->
+      <div class="about">
+        <h3>How it works</h3>
+        <p>The op-amp operates in <strong style="color:var(--teal)">open-loop</strong> mode — no negative feedback. With gain ≥100 dB, even a µV difference between V<sub>in</sub> and V<sub>ref</sub> saturates the output to a supply rail instantly.</p>
+        <p>Hysteresis (Schmitt Trigger) adds a <strong style="color:var(--amber)">dead-band</strong> via positive feedback, preventing output chatter when the signal oscillates near the threshold.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── CIRCUIT DIAGRAM ── -->
+  <div class="panel circuit-wrap">
+    <div class="panel-header">
+      <span class="panel-title">Circuit Schematic — Live State</span>
+      <span style="font-size:9px;color:var(--muted)">LM741 / LM339 Configuration</span>
+    </div>
+    <canvas id="circuit"></canvas>
+  </div>
+
+</main>
+
+<footer>
+  Op-Amp Threshold Detection Circuit &nbsp;·&nbsp; Interactive Simulation &nbsp;·&nbsp; Open in any modern browser &nbsp;·&nbsp; No dependencies required
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const state = {
+  amp: 8, vref: 2, freq: 1, vcc: 12, hyst: 1,
+  hystEnabled: false,
+  outHigh: true,
+  t0: performance.now()
+};
+
+// ══════════════════════════════════════════════════════════
+//  ELEMENTS
+// ══════════════════════════════════════════════════════════
+const scopeCanvas   = document.getElementById('scope');
+const circuitCanvas = document.getElementById('circuit');
+const sCtx = scopeCanvas.getContext('2d');
+const cCtx = circuitCanvas.getContext('2d');
+
+// ══════════════════════════════════════════════════════════
+//  CONTROLS WIRING
+// ══════════════════════════════════════════════════════════
+function wire(id, key, fmt, extra) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    state[key] = parseFloat(el.value);
+    document.getElementById(id + '-val').textContent = fmt(state[key]);
+    if (extra) extra();
+  });
+}
+
+wire('amp',  'amp',  v => v.toFixed(1) + 'V');
+wire('vref', 'vref', v => v.toFixed(1) + 'V', updateHystUI);
+wire('freq', 'freq', v => v.toFixed(1) + 'Hz');
+wire('vcc',  'vcc',  v => '±' + v.toFixed(0) + 'V');
+wire('hyst', 'hyst', v => v.toFixed(2) + 'V', updateHystUI);
+
+function toggleHysteresis() {
+  state.hystEnabled = !state.hystEnabled;
+  const pill = document.getElementById('hyst-pill');
+  const ctrl = document.getElementById('hyst-controls');
+  const legend = document.getElementById('hyst-legend');
+  pill.classList.toggle('on', state.hystEnabled);
+  ctrl.style.display = state.hystEnabled ? 'block' : 'none';
+  legend.style.display = state.hystEnabled ? 'flex' : 'none';
+  document.getElementById('formula-box').innerHTML = state.hystEnabled
+    ? `<strong>V<sub>out</sub></strong> = +V<sub>cc</sub> if V<sub>in</sub> &gt; V<sub>UTP</sub> = ${(state.vref+state.hyst/2).toFixed(2)}V<br><strong>V<sub>out</sub></strong> = −V<sub>cc</sub> if V<sub>in</sub> &lt; V<sub>LTP</sub> = ${(state.vref-state.hyst/2).toFixed(2)}V`
+    : `<strong>V<sub>out</sub></strong> = +V<sub>cc</sub> if V<sub>in</sub> &gt; V<sub>ref</sub><br><strong>V<sub>out</sub></strong> = −V<sub>cc</sub> if V<sub>in</sub> &lt; V<sub>ref</sub>`;
+  updateHystUI();
+}
+
+function updateHystUI() {
+  if (!state.hystEnabled) return;
+  const utp = state.vref + state.hyst / 2;
+  const ltp = state.vref - state.hyst / 2;
+  document.getElementById('utp-label').textContent = 'V_UTP: ' + utp.toFixed(2) + 'V';
+  document.getElementById('ltp-label').textContent = 'V_LTP: ' + ltp.toFixed(2) + 'V';
+  // Hysteresis bar visualisation (relative 0–100%)
+  const range = state.vcc * 2;
+  const centerPct = (state.vref + state.vcc) / range * 100;
+  const halfPct   = (state.hyst / 2) / range * 100;
+  const bar = document.getElementById('hyst-bar');
+  const ctr = document.getElementById('hyst-center');
+  bar.style.left   = (centerPct - halfPct) + '%';
+  bar.style.width  = (halfPct * 2) + '%';
+  ctr.style.left   = centerPct + '%';
+  document.getElementById('formula-box').innerHTML =
+    `<strong>V<sub>out</sub></strong> = +V<sub>cc</sub> if V<sub>in</sub> &gt; V<sub>UTP</sub> = ${utp.toFixed(2)}V<br><strong>V<sub>out</sub></strong> = −V<sub>cc</sub> if V<sub>in</sub> &lt; V<sub>LTP</sub> = ${ltp.toFixed(2)}V`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMPUTE OUTPUT STATE (with hysteresis)
+// ══════════════════════════════════════════════════════════
+function computeOutput(vinSeries) {
+  const H = state.hystEnabled ? state.hyst : 0;
+  const utp = state.vref + H / 2;
+  const ltp = state.vref - H / 2;
+  let out = vinSeries[0] >= utp;
+  return vinSeries.map(vin => {
+    if (out  && vin < ltp) out = false;
+    if (!out && vin > utp) out = true;
+    return out;
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  OSCILLOSCOPE DRAW
+// ══════════════════════════════════════════════════════════
+function resizeScope() {
+  const rect = scopeCanvas.parentElement.getBoundingClientRect();
+  if (scopeCanvas.width !== rect.width || scopeCanvas.height !== 280) {
+    scopeCanvas.width  = rect.width;
+    scopeCanvas.height = 280;
+  }
+}
+
+function drawScope(tNow) {
+  resizeScope();
+  const W = scopeCanvas.width, H = scopeCanvas.height;
+  const ctx = sCtx;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#070b0f';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Grid ──
+  const gridCols = 10, gridRows = 8;
+  ctx.strokeStyle = '#0f1c2a'; ctx.lineWidth = 1;
+  for (let i = 1; i < gridCols; i++) {
+    const x = W * i / gridCols;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let i = 1; i < gridRows; i++) {
+    const y = H * i / gridRows;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  // Centre crosshairs
+  ctx.strokeStyle = '#152236'; ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const vRange = state.vcc * 2;
+  const pad = 32;
+  const yFromV = v => H/2 - (v / vRange) * (H - pad * 2);
+
+  // ── Y-Axis labels ──
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  const yLabels = [state.vcc, state.vcc/2, 0, -state.vcc/2, -state.vcc];
+  yLabels.forEach(v => {
+    const y = yFromV(v);
+    ctx.fillStyle = '#253448';
+    ctx.fillText((v > 0 ? '+' : '') + v.toFixed(0) + 'V', 4, y + 3);
+  });
+
+  // ── Build point arrays ──
+  const N = 400;
+  const tSpan = Math.max(2, 3 / state.freq);
+  const vinPts = [], xPts = [];
+  for (let i = 0; i < N; i++) {
+    const t = (tNow - tSpan) + (i / (N - 1)) * tSpan;
+    const vin = state.amp * Math.sin(2 * Math.PI * state.freq * t);
+    vinPts.push(vin); xPts.push(W * i / (N - 1));
+  }
+  const outStates = computeOutput(vinPts);
+
+  // ── Hysteresis band fill ──
+  if (state.hystEnabled) {
+    const utp = state.vref + state.hyst / 2;
+    const ltp = state.vref - state.hyst / 2;
+    ctx.fillStyle = 'rgba(245,166,35,0.07)';
+    ctx.fillRect(0, yFromV(utp), W, yFromV(ltp) - yFromV(utp));
+  }
+
+  // ── Vref line ──
+  ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 5]);
+  ctx.beginPath(); ctx.moveTo(0, yFromV(state.vref)); ctx.lineTo(W, yFromV(state.vref)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f5a623'; ctx.font = 'bold 9px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('Vref ' + state.vref.toFixed(1) + 'V', W - 6, yFromV(state.vref) - 4);
+  ctx.textAlign = 'left';
+
+  // Hysteresis band lines
+  if (state.hystEnabled) {
+    const utp = state.vref + state.hyst / 2;
+    const ltp = state.vref - state.hyst / 2;
+    ctx.strokeStyle = 'rgba(245,166,35,0.35)'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(0, yFromV(utp)); ctx.lineTo(W, yFromV(utp)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, yFromV(ltp)); ctx.lineTo(W, yFromV(ltp)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ── Vout square wave ──
+  ctx.strokeStyle = '#f0455a'; ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(240,69,90,0.4)'; ctx.shadowBlur = 4;
+  ctx.beginPath();
+  let prevOut = outStates[0];
+  let startY = outStates[0] ? yFromV(state.vcc * 0.95) : yFromV(-state.vcc * 0.95);
+  ctx.moveTo(xPts[0], startY);
+  for (let i = 1; i < N; i++) {
+    const y = outStates[i] ? yFromV(state.vcc * 0.95) : yFromV(-state.vcc * 0.95);
+    if (outStates[i] !== prevOut) {
+      ctx.lineTo(xPts[i], outStates[i-1] ? yFromV(state.vcc * 0.95) : yFromV(-state.vcc * 0.95));
+      ctx.lineTo(xPts[i], y);
+    }
+    ctx.lineTo(xPts[i], y);
+    prevOut = outStates[i];
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // ── Vin sine wave ──
+  ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(0,212,170,0.35)'; ctx.shadowBlur = 5;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const y = yFromV(vinPts[i]);
+    i === 0 ? ctx.moveTo(xPts[i], y) : ctx.lineTo(xPts[i], y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // ── Live cursor dots ──
+  const vinNow = state.amp * Math.sin(2 * Math.PI * state.freq * tNow);
+  const outNow = outStates[N - 1];
+
+  ctx.fillStyle = '#00d4aa';
+  ctx.shadowColor = 'rgba(0,212,170,.8)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(W - 6, yFromV(vinNow), 5, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#f0455a';
+  ctx.shadowColor = 'rgba(240,69,90,.8)'; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(W - 6, outNow ? yFromV(state.vcc * 0.95) : yFromV(-state.vcc * 0.95), 5, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  return { vinNow, outNow };
+}
+
+// ══════════════════════════════════════════════════════════
+//  CIRCUIT SCHEMATIC DRAW
+// ══════════════════════════════════════════════════════════
+function resizeCircuit() {
+  const rect = circuitCanvas.parentElement.getBoundingClientRect();
+  if (circuitCanvas.width !== rect.width || circuitCanvas.height !== 200) {
+    circuitCanvas.width  = rect.width;
+    circuitCanvas.height = 200;
+  }
+}
+
+function drawCircuit(vinNow, outHigh) {
+  resizeCircuit();
+  const W = circuitCanvas.width, H = circuitCanvas.height;
+  const ctx = cCtx;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W * 0.48, cy = H * 0.5;
+  const tw = 80, th = 66;
+
+  // ── Wires ──
+  // Vin wire (teal)
+  ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx - tw/2 - 90, cy + 16); ctx.lineTo(cx - tw/2, cy + 16); ctx.stroke();
+  // Vref wire (amber)
+  ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx - tw/2 - 90, cy - 16); ctx.lineTo(cx - tw/2, cy - 16); ctx.stroke();
+  // Output wire (dynamic colour)
+  ctx.strokeStyle = outHigh ? '#34d399' : '#f0455a'; ctx.lineWidth = 2.5;
+  ctx.shadowColor = outHigh ? 'rgba(52,211,153,.5)' : 'rgba(240,69,90,.5)';
+  ctx.shadowBlur = 6;
+  ctx.beginPath(); ctx.moveTo(cx + tw/2, cy); ctx.lineTo(cx + tw/2 + 60, cy); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Vcc wires
+  ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx + 10, cy - th/2); ctx.lineTo(cx + 10, cy - th/2 - 22); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 10, cy + th/2); ctx.lineTo(cx + 10, cy + th/2 + 22); ctx.stroke();
+
+  // ── Op-Amp Triangle ──
+  ctx.fillStyle = '#0D1B3E';
+  ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 1.5;
+  ctx.shadowColor = 'rgba(0,212,170,.2)'; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx - tw/2, cy + th/2);
+  ctx.lineTo(cx - tw/2, cy - th/2);
+  ctx.lineTo(cx + tw/2, cy);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // ± symbols
+  ctx.fillStyle = '#00d4aa'; ctx.font = 'bold 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('+', cx - tw/2 + 12, cy + 22);
+  ctx.fillStyle = '#f5a623';
+  ctx.fillText('−', cx - tw/2 + 12, cy - 8);
+
+  // ── Vin source (circle with sine) ──
+  const srcX = cx - tw/2 - 90;
+  ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(srcX - 18, cy + 16, 15, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.lineWidth = 1.2;
+  for (let i = 0; i <= 32; i++) {
+    const t = i / 32;
+    const sx = srcX - 26 + t * 16, sy = cy + 16 + Math.sin(t * Math.PI * 2) * 6;
+    i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#00d4aa'; ctx.font = 'bold 9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Vin', srcX - 18, cy + 42);
+  ctx.fillStyle = '#00d4aa'; ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillText(vinNow.toFixed(2) + 'V', srcX - 18, cy + 53);
+
+  // ── Vref source (rectangle) ──
+  ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(srcX - 34, cy - 33, 32, 30);
+  ctx.fillStyle = '#f5a623'; ctx.font = 'bold 9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Vref', srcX - 18, cy - 14);
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillText(state.vref.toFixed(1) + 'V', srcX - 18, cy - 4);
+
+  // ── Supply labels ──
+  ctx.fillStyle = '#dc2626'; ctx.font = 'bold 9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('+' + state.vcc.toFixed(0) + 'V', cx + 10, cy - th/2 - 28);
+  ctx.fillStyle = '#2563eb';
+  ctx.fillText('−' + state.vcc.toFixed(0) + 'V', cx + 10, cy + th/2 + 34);
+
+  // ── Output indicator box ──
+  const boxX = cx + tw/2 + 64, boxY = cy - 18, boxW = 68, boxH = 36;
+  ctx.fillStyle = outHigh ? 'rgba(52,211,153,.1)' : 'rgba(240,69,90,.1)';
+  ctx.strokeStyle = outHigh ? '#34d399' : '#f0455a'; ctx.lineWidth = 1.5;
+  ctx.shadowColor = outHigh ? 'rgba(52,211,153,.4)' : 'rgba(240,69,90,.4)';
+  ctx.shadowBlur = 8;
+  roundRect(ctx, boxX, boxY, boxW, boxH, 6); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = outHigh ? '#34d399' : '#f0455a';
+  ctx.font = 'bold 11px JetBrains Mono, monospace'; ctx.textAlign = 'center';
+  ctx.fillText(outHigh ? 'HIGH' : 'LOW', boxX + boxW/2, cy + 1);
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillText((outHigh ? '+' : '−') + state.vcc.toFixed(0) + 'V', boxX + boxW/2, cy + 13);
+
+  // ── Vout label on wire ──
+  ctx.fillStyle = '#475569'; ctx.font = '9px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('Vout', cx + tw/2 + 2, cy - 6);
+}
+
+// ══════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function updateStats(vinNow, outHigh) {
+  document.getElementById('vin-stat').textContent    = vinNow.toFixed(2);
+  document.getElementById('vref-stat').textContent   = state.vref.toFixed(2);
+  document.getElementById('vout-stat').textContent   = (outHigh ? '+' : '−') + state.vcc.toFixed(0);
+  const margin = vinNow - state.vref;
+  document.getElementById('margin-stat').textContent = (margin >= 0 ? '+' : '') + margin.toFixed(2);
+  document.getElementById('margin-stat').style.color = margin > 0 ? '#34d399' : '#f0455a';
+
+  const badge = document.getElementById('out-badge');
+  const label = document.getElementById('out-text');
+  badge.className = 'out-badge ' + (outHigh ? 'high' : 'low');
+  label.textContent = outHigh ? 'HIGH' : 'LOW';
+
+  document.getElementById('freq-label').textContent = state.freq.toFixed(1) + ' Hz';
+}
+
+// ══════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ══════════════════════════════════════════════════════════
+function loop() {
+  const tNow = (performance.now() - state.t0) / 1000;
+  const { vinNow, outNow } = drawScope(tNow);
+  drawCircuit(vinNow, outNow);
+  updateStats(vinNow, outNow);
+  requestAnimationFrame(loop);
+}
+
+// Init
+resizeScope(); resizeCircuit();
+window.addEventListener('resize', () => { resizeScope(); resizeCircuit(); });
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
